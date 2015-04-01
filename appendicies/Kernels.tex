@@ -1,0 +1,183 @@
+\chapter{Kernels} \label{chap:Kernels}
+\section{Addition} \label{sec:KernelAddition}
+\subsection{Addition of two DoubleCRT objects}
+\begin{lstlisting}[language=C,caption={Addition Kernel for Two DoubleCRT}]
+__global__ void vectorAddMod(long *vector_A, 
+                            long *vector_B, 
+                            long width, 
+                            long sub_width, 
+                            long offset) {
+	long tid;
+	tid = offset + blockIdx.x * blockDim.x + threadIdx.x;
+	while ((tid-offset) < width) {
+	    // extract modulus from array
+		uint64_t modulus = 
+		        (uint64_t)vector_moduli[tid / sub_width];
+		// compute sum
+		uint64_t sum = 
+		        (uint64_t)vector_A[tid] + 
+		        (uint64_t)vector_B[tid];
+		// perform modulus operation, store result
+		vector_A[tid] = 
+		    (long)(sum - modulus * (sum / modulus));
+		tid += blockDim.x * gridDim.x;
+	}
+	return;
+}
+\end{lstlisting}
+
+\subsection{Addition of a DoubleCRT object and a constant}
+\begin{lstlisting}[language=C,caption={Addition Kernel for a DoubleCRT and a constant}]
+__global__ void vectorAddMod(long *vector_A, 
+                            long width, 
+                            long sub_width, 
+                            long offset) {
+	long tid;
+	tid = offset + blockIdx.x * blockDim.x + threadIdx.x;
+	while ((tid-offset) < width) {
+	    // extract modulus from array
+		uint64_t modulus = 
+		    (uint64_t)vector_moduli[tid / sub_width];
+		// compute sum
+		uint64_t sum = 
+		    (uint64_t)vector_A[tid] + 
+		    (uint64_t)vector_ns[tid / sub_width];
+		// perform modulus operation, store result
+		vector_A[tid] = 
+		    (long)(sum - modulus * (sum / modulus));
+		tid += blockDim.x * gridDim.x;
+	}
+	return;
+}
+\end{lstlisting}
+
+\section{Subtraction} \label{sec:KernelSubtraction}
+\subsection{Subtraction of two DoubleCRT objects}
+\begin{lstlisting}[language=C,caption={Subtraction Kernel for Two DoubleCRT}]
+__global__ void vectorSubMod(long *vector_A, 
+                            long *vector_B, 
+                            long width, 
+                            long sub_width, 
+                            long offset) {
+	long tid;
+	tid = offset + blockIdx.x * blockDim.x + threadIdx.x;
+	while ((tid-offset) < width) {
+	    // extract modulus from array
+		uint64_t modulus = 
+		    (uint64_t)vector_moduli[tid / sub_width];
+		// compute difference
+		// add modulus to ensure result is > 0, 
+	    // will be removed when mod by modulus
+		uint64_t diff = 
+		    (uint64_t)vector_A[tid] + 
+		    modulus - 
+		    (uint64_t)vector_B[tid];
+		
+		// perform modulus operation, store result
+		vector_A[tid] = 
+		    (long)(diff - modulus * (diff / modulus));
+		tid += blockDim.x * gridDim.x;
+	}
+	return;
+}
+\end{lstlisting}
+
+\subsection{Subtraction of a DoubleCRT object and a constant}
+\begin{lstlisting} [language=C,caption={Subtraction Kernel for a DoubleCRT and a constant}]
+__global__ void vectorSubMod(long *vector_A, 
+                            long width, 
+                            long sub_width, 
+                            long offset) {
+	long tid;
+	tid = offset + blockIdx.x * blockDim.x + threadIdx.x;
+	while ((tid-offset) < width) {
+	    // extract modulus from array
+		uint64_t modulus = 
+		    (uint64_t)vector_moduli[tid / sub_width];
+		// compuate difference
+		// add modulus to ensure result is > 0, 
+		// will be removed when mod by modulus
+		uint64_t diff = 
+		    (uint64_t)vector_A[tid] + 
+		    modulus - 
+		    (uint64_t)vector_ns[tid / sub_width];
+		// perform modulus operation, store result
+		vector_A[tid] = 
+		    (long)(diff - modulus * (diff / modulus));
+		tid += blockDim.x * gridDim.x;
+	}
+	return;
+}
+\end{lstlisting}
+
+\section{Multiplication} \label{sec:KernelMultiplication}
+\subsection{Multiplication of two DoubleCRT objects}
+\begin{lstlisting}[language=C,caption={Multiplication Kernel for Two DoubleCRT}]
+__global__ void vectorMultMod(long *vector_A, 
+                            long *vector_B, 
+                            long width, 
+                            long sub_width, 
+                            long offset) {
+	long tid;
+	tid = offset + blockIdx.x * blockDim.x + threadIdx.x;
+	while ((tid-offset) < width) {
+	    // extract modulus from array
+		uint64_t modulus = 
+		    (uint64_t)vector_moduli[tid / sub_width];
+		// compute intermediate values
+		uint64_t a1 = 
+		    (uint64_t)vector_A[tid] / 4294967296;
+		uint64_t a2 = 
+		    (uint64_t)vector_A[tid] - 4294967296 * a1;
+		uint64_t b1 = 
+		    (uint64_t)vector_B[tid] / 4294967296;
+		uint64_t b2 = 
+		    (uint64_t)vector_B[tid] - 4294967296 * b1;
+        // compute z0, perform modulus
+		uint64_t z0 = a2 * b2;
+		z0 = z0 - modulus * (z0 / modulus);
+        // compute part of z1
+		uint64_t p12 = a1 * b2;
+        //compute part of z1
+		uint64_t p21 = a2 * b1;
+        // compute z1, perform modulus
+		uint64_t z1 = p12 + p21;
+		z1 = z1 - modulus * (z1 / modulus);
+		// compute z2
+		uint64_t z2 = a1 * b1;
+        // loop to get z2*2^32 and z1*2^32
+		int i;
+		for(i=0; i<32; i++) {
+			z1 = z1 * 2;
+			if(z1 >= modulus) {
+				z1 = 
+				    z1 - modulus * 
+				    (z1 / modulus);
+			}
+
+			z2 = z2 * 2;
+			if(z2 >= modulus) {
+				z2 = 
+				    z2 - modulus * 
+				    (z2 / modulus);
+			}
+		}
+        // loop to get z2*2^32*2^32=z2*2^64
+		for(i=i; i<64; i++) {
+			z2 = z2 * 2;
+			if(z2 >= modulus) {
+				z2 = 
+				    z2 - modulus *
+				    (z2 / modulus);
+			}
+		}
+        // compute final value
+		uint64_t z = z0 + z1 + z2;
+		// perform modulus operation, store result
+		vector_A[tid] = 
+		    (long)(z - modulus * (z / modulus));
+		tid += blockDim.x * gridDim.x;
+	}
+	return;
+}
+\end{lstlisting}
