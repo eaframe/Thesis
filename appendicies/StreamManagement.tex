@@ -1,0 +1,34 @@
+\chapter{Stream Management} \label{chap:StreamManagement}
+\section{Device Stream Management} \label{sec:DeviceStreamManagement}
+\begin{lstlisting}[language=C,caption={Device Stream Management}]
+void create_streams(long need_num_streams) {
+	for(long i = num_streams; 
+	        i<need_num_streams; i++) {
+		if(cudaSuccess != 
+		    cudaStreamCreate(&stream[i])) 
+		{ 
+		    GPU_error(__FILE__, 
+		        __LINE__, 
+		        cudaGetLastError());
+		}
+	}
+	
+	num_streams = need_num_streams;
+}
+
+void init_streams(long need_num_streams) {
+	if(num_streams == 0) {
+		stream = (cudaStream_t *)
+		    malloc(need_num_streams 
+		            * sizeof(cudaStream_t));
+		create_streams(need_num_streams);
+	} else if (num_streams < 
+	            need_num_streams) {
+		stream = 
+		    (cudaStream_t *)realloc(stream, 
+		                    need_num_streams * 
+		                    sizeof(cudaStream_t));	
+		create_streams(need_num_streams);
+	}
+}
+\end{lstlisting}

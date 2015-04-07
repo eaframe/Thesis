@@ -11,11 +11,13 @@ There are three phases when executing operations on a GPU. First the memory is c
 \caption{HElib Type Hierarchy}
 \label{fig:CtxtTypeHierarchy}
 \end{figure}
-Before addressing the changes present in GPUHElib, it is necessary to understand the current serial implementation of HElib. Let $\ast$ be the operation being perform (here $\ast$ could stand for any of the operations, all of them are handled similarly) and $A$ and $B$ be the ciphertexts being operated on. The execution of the operation $ A = A\ \ast\  B$ requires a few steps. $A$ and $B$ are stored as \verb|Ctxt| objects in HElib. Figure \ref{fig:CtxtTypeHierarchy} shows the type hierarchy for a \verb|Ctxt| object. \verb|Ctxt| objects have one important variable, \verb|parts|, a vector containing multiple \verb|CtxtPart|s. These parts constitute the ciphertext. The operations supported by \verb|Ctxt| are the addition, subtraction, and multiplication of two \verb|Ctxt| objects. Each of these operations use \verb|parts| during the execution of the operation, thus the operations in \verb|CtxtPart| are called.
+Before addressing the changes present in GPUHElib, it is necessary to understand the current serial implementation of HElib. Let $\ast$ be the operation being perform (here $\ast$ could stand for any of the operations, all of them are handled similarly) and $A$ and $B$ be the ciphertexts being operated on. The execution of the operation $ A = A\ \ast\  B$ requires a few steps. 
 
-\verb|CtxtPart| is an extension of the class \verb|DoubleCRT|, which is where the operations are implemented. Below is code for the operations.
+$A$ and $B$ are stored as \verb|Ctxt| objects in HElib. Figure \ref{fig:CtxtTypeHierarchy} shows the type hierarchy for a \verb|Ctxt| object. \verb|Ctxt| objects have one important variable, \verb|parts|, a vector containing multiple \verb|CtxtPart|s. These parts constitute the ciphertext. The operations supported by \verb|Ctxt| are the addition, subtraction, and multiplication of two \verb|Ctxt| objects. Each of these operations use \verb|parts| during the execution of the operation, thus the operations in \verb|CtxtPart| are called.
 
-\begin{lstlisting}[language=C++,caption={Add, Sub and Mul operations of two DoubleCRT objects}]
+\verb|CtxtPart| is an extension of the class \verb|DoubleCRT|, which is where the operations are implemented. Listing \ref{lst:HElibSerial} is an excerpt from the function that performs the operations.
+
+\begin{lstlisting}[language=C++,caption={Add, Sub and Mul operations of two DoubleCRT objects},label={lst:HElibSerial}]
 ...
 const IndexSet& s = map.getIndexSet();
 long phim = context.zMStar.getPhiM();
@@ -32,12 +34,12 @@ for (long i = s.first(); i <= s.last(); i = s.next(i)) {
 ...
 \end{lstlisting}
 
-As seen in the code above, the index set is iterated over. For each index, the ith prime is extracted along with the ith row from the maps. Even though the map is accessed like an array, it is an unordered map, with the array access syntax for convenience. These rows are then iterated over, applying the operation to each element. This is where the SIMD design is occurring. A double \verb|for| loop to add, subtract or multiply two vectors together. This is where the GPU implementation can occur
+As the index set is iterated over, the ith prime is extracted along with the ith row from the maps. Even though the map is accessed like an array, it is an unordered map, with the array access syntax for convenience. These rows are then iterated over, applying the operation to each element. This is where the SIMD design is occurring. A double \verb|for| loop to add, subtract or multiply two vectors together. This is where the GPU implementation can occur.
 
 \section{Memory Mapping} \label{sec:MemoryMapping}
 In order for the GPU to execute a kernel, it must have the data in a 1D vector. This requires that the data be mapped from its current storage model into a 1D vector.
 
-\subsection{HElib Data Storage and Mapping for GPU Implementation}
+\subsection{Mapping from HElib to GPU}
 
 \begin{figure}[htp]
 \centering
@@ -57,12 +59,17 @@ Currently the data is stored as shown in Figure \ref{fig:HElibDataStorage}. The 
 
 Similarly the moduli are being stored as individual elements. In order to be used during execution on the GPU, they must also be mapped to a 1D vector. Figure \ref{fig:HElibModuliStorage} shows the current storage model for the moduli. Each successive modulus is concatenated to the preceding moduli, thus creating a 1D vector.
 
+\subsection{GPU Vector Management}
+Naively creating and freeing vectors on the GPU when the operation is run slows down run-times because allocating and freeing memory on the GPU takes time. Thus creating a few vectors at the beginning of execution, and maintaining them throughout the programs lifetime, allows for the most efficient memory usage, and greatest speedup.
+
+Four vectors are created and maintained throughout the lifetime of the program. The first is a vector of size $num\_rows \times size\_of\_row$. This is the 1D vector that the data from the first \verb|DoubleCRT| object is being copied into. The second is another vector of size $num\_rows \times size\_of\_row$, which holds the data that is being copied from the other \verb|DoubleCRT| object. The third is a vector of size $num\_rows$. This vector holds the moduli. The last vector is also of size $num\_rows$, and is used when computing over a single \verb|DoubleCRT| object and a constant number. The constant number, modulus the moduli, are stored in this last vector. The sizes, $num\_rows$ and $size\_of\_row$, rarely change, thus there will be little memory reallocation occurring, and reallocation will only occur when the vector is too small, not when it is larger than needed. The function that handles initializing and reallocation of these vectors is found in Appendix \ref{sec:DeviceVectorManagement}.
+
 \section{Overflow Considerations} \label{sec:OverflowConsiderations}
 Arithmetic overflow occurs when the result of an arithmetic operation is greater than the magnitude of the storage location that is being used to store the value. For example, using 4-bit unsigned integers, the largest possible value that can be stored is $2^{4} - 1 = 15$. Thus when adding $12 + 14 = 26$, an overflow error will occur, because $26$ requires 5 bits to store. 
 
-The type of the data being operated on in HElib is 64-bit signed integers. Meaning they can take values from $-(2^{63})$ to $2^{63} - 1$. However these values will never be negative, thus the actual range of these values is $0$ to $2^{63} - 1$. The largest modulus could be the largest possible value, $2^{63} - 1$ and the largest value being operated on could be $2^{63} - 2$. The reason that the largest value being operated on is one less than the largest value, $2^{63} - 1$, is because the value has to be smaller than the modulus, thus $(2^{63} - 1) - 1 = 2^{63} - 2$. In CUDA, the language used on NVIDIA GPUs, and the language this implementation is written in, the largest variable type has a length of 64 bits. The type that can contain the largest value is \verb|uint64_t|. This type takes values from 0 to $2^{64} - 1$.
+The type of the data being operated on in HElib is 64-bit signed integers. Meaning they can take values from $-(2^{63})$ to $2^{63} - 1$. However these values will never be negative, thus the actual range of these values is $0$ to $2^{63} - 1$. The largest modulus could be the largest possible value, $2^{63} - 1$ and the largest value being operated on could be $2^{63} - 2$. The reason that the largest value being operated on is one less than the largest value, $2^{63} - 1$, is because the value has to be smaller than the modulus, thus $(2^{63} - 1) - 1 = 2^{63} - 2$. In CUDA, the language used on NVIDIA GPUs, and the language this implementation is written in, the largest variable type has a length of 64 bits. The type that can contain the largest value is \verb|uint64_t|, unsigned 64-bit integers. This type can store values from 0 to $2^{64} - 1$.
 
-Six operations were designed, as they are the most commonly used operations. Addition, subtraction, and multiplication of a \verb|DoubleCRT| with another \verb|DoubleCRT| and addition, subtraction, and multiplication of a \verb|DoubleCRT| with a constant number. Further considerations for overflow prevention for each operation is discussed in the below sections.
+Six operations were designed, as they are the most commonly used operations. Addition, subtraction, and multiplication of a \verb|DoubleCRT| with another \verb|DoubleCRT| and addition, subtraction, and multiplication of a \verb|DoubleCRT| with a constant number. Further considerations for overflow prevention for each operation is discussed in the following sections.
 
 \subsection{Addition Overflow Considerations}
 When considering the overflow prevention for addition, it is necessary to compute what the largest value could possibly be. As noted above, the largest a value could be is $2^{63} - 2$ and the largest modulus is $2^{63} - 1$. Performing the addition operation on the possible values, 
@@ -73,7 +80,7 @@ shows that the number $2^{64} - 4$ needs to be computed, before the modulus oper
 \ref{sec:KernelAddition}.
 
 \subsection{Subtraction Overflow Considerations}
-Similar to addition, it is necessary to compute the worst case scenario when considering overflow prevention. Again the largest a value could be is $2^{63} - 2$ and the largest modulus is $2^{63} - 1$. There are two scenarios to consider for subtraction: the first number being $2^{63} - 2$ and the second number being 0 and the first number being 0 and the second number being $2^{63} - 2$. Performing the subtraction operation and modulus calculation for both scenarios,
+Similar to addition, it is necessary to compute the worst case scenario when considering overflow prevention for subtraction. Again the largest a value could be is $2^{63} - 2$ and the largest modulus is $2^{63} - 1$. There are two scenarios to consider for subtraction: the first number being $2^{63} - 2$ and the second number being 0 and the first number being 0 and the second number being $2^{63} - 2$. Performing the subtraction operation and modulus calculation for both scenarios,
 \begin{equation} \label{eq:sub1}
 (2^{63} - 2) - 0 = 2^{63} - 2
 \end{equation}
@@ -82,7 +89,7 @@ Similar to addition, it is necessary to compute the worst case scenario when con
 \end{equation}
 shows that all the computations can be completed using signed integers, because all numbers in the above equations are within the range of signed integers. Thus there does not need to be any steps taken to prevent overflow for this design. 
 
-With this design, to ensure that the resultant value is greater than 0, a check is made after the subtraction operation takes place, to determine if the result is less than 0. If so, the modulus is then added to the value, which will result in the value being larger than 0. This check will cause a branch to occur in the GPU, which could slow down run-time. Alternatively, instead of performing a check to determine if the result is less than 0, the modulus can be added to the first value, then the second is subtracted, shown in the below equation, which is a different approach to the subtraction operation. Equation \ref{eq:sub2} is redefined below, with this procedure applied. 
+With this design, to ensure that the resultant value is greater than 0, a check is made after the subtraction operation takes place, to determine if the result is less than 0. If so, the modulus is then added to the value, which will result in the value being larger than 0. This check will cause a branch to occur in the GPU, which could slow down run-time. Alternatively, instead of performing a check to determine if the result is less than 0, the modulus can be added to the first value, then the second value is subtracted, shown in the below equation, which is a different approach to the subtraction operation. Equation \ref{eq:sub2} is redefined below, with this procedure applied. 
 \begin{equation}
 (0 + (2^{63} - 1)) - (2^{63} - 2) = (2^{63} - 1) - (2^{63} - 2) = 1
 \end{equation}
@@ -145,7 +152,7 @@ z_0 & = x_0 y_0\\
  & = 2^{64} - 2^{34} - 4
 \end{split}
 \end{equation}
-shows that $z_0$ must be calculated using unsigned 64-bit integers, since the result is to large for signed 64-bit integers. Thus this calculation also requires casting the pieces to unsigned 64-bit integers, performing the multiplication, before calculating the modulus to bring the result back into the signed 64-bit integer range.
+shows that $z_0$ must be calculated using unsigned 64-bit integers, since the result is too large for signed 64-bit integers. Thus this calculation also requires casting the pieces to unsigned 64-bit integers, performing the multiplication, before calculating the modulus to bring the result back into the signed 64-bit integer range.
 
 Now that each of the intermediate pieces have been addressed, the final piece needs consideration. Computing $xy$,
 \begin{equation}
@@ -178,8 +185,8 @@ CUDA streams are a sequence of operations that execute in order on a GPU. Operat
 There are two ways of dispatching GPU operations: all at once, or by batching similar operations together.
 
 \subsubsection{All At Once Method}
-The first approach launches all the operations at once, shown in the code below.
-\begin{lstlisting}[language=C++,caption={Operations launched all at once}]
+The first approach launches all the operations at once, shown in Listing \ref{lst:AllAtOnce}.
+\begin{lstlisting}[language=C++,caption={Operations launched all at once},label={lst:AllAtOnce}]
 for (int i = 0; i < nStreams; i++) {
     int offset = i * streamSize;
     cudaMemcpyAsync(&d_a[offset], &a[offset], streamBytes, 
@@ -190,10 +197,10 @@ for (int i = 0; i < nStreams; i++) {
                     cudaMemcpyDeviceToHost, stream[i]);
 }
 \end{lstlisting}
-So all three phases are launched successively on the same stream, before the next stream's operations are launched. 
+All three phases are launched successively on the same stream, before the next stream's operations are launched. 
 \subsubsection{Batching Method}
-The second approach is to launch similar operations together, instead of all at once. This is show in the code below.
-\begin{lstlisting}[language=C++,caption={Operations batched}]
+The second approach is to launch similar operations together, instead of all at once. This is show in Listing \ref{lst:Batching}.
+\begin{lstlisting}[language=C++,caption={Operations batched},label={lst:Batching}]
 for (int i = 0; i < nStreams; ++i) {
   int offset = i * streamSize;
   cudaMemcpyAsync(&d_a[offset], &a[offset], streamBytes, 
@@ -221,7 +228,7 @@ Both of these methods will produce the same result, as they are executing the sa
 \caption{GPU 2-Way Pipelining}
 \label{fig:GPU2Way}
 \end{figure}
-Older GPU hardware only has a single copy engine and a single kernel execution engine. Figure \ref{fig:GPU2Way} shows both methods of kernel execution compared to serial execution. As one can see, both provide a speed up, however the batching method provides a greater speedup over the all at once method. This is because the all at once method launched the second copy from host to device after the first copy from device to host. Because there is only one copy engine, and the engine executes operations in the order they were launched, the copy engine must execute the copy from device to host, before the next host to device copy can occur. Using the second method though, the copies from host to device are all launched before the copies from device to host, so they call all execute one after the other. This allows for the most efficient pipelining, and the greatest speedup on hardware that only has one of each engine.
+Older GPU hardware only have a single copy engine and a single kernel execution engine. Figure \ref{fig:GPU2Way} shows both methods of kernel execution compared to serial execution. As one can see, both provide a speed up, however the batching method provides a greater speedup over the all at once method. This is because the all at once method launched the second copy from host to device after the first copy from device to host. Because there is only one copy engine, and the engine executes operations in the order they were launched, the copy engine must execute the copy from device to host, before the next host to device copy can occur. Using the second method though, the copies from host to device are all launched before the copies from device to host, so they call all execute one after the other. This allows for the most efficient pipelining, and the greatest speedup on hardware that only has one of each engine.
 \subsection{3-Way Pipelining}
 \begin{figure}[htp]
 \centering
@@ -229,4 +236,7 @@ Older GPU hardware only has a single copy engine and a single kernel execution e
 \caption{GPU 3-Way Pipelining}
 \label{fig:GPU3Way}
 \end{figure}
-Newer GPU hardware have both a copy from host to device and copy from device to host engines, as well as the kernel engine. The two methods under this new hardware configuration are shown in Figure \ref{fig:GPU3Way}. Here one can see that again both methods provide an overall speedup, however for this case, the all at once method achieves the greatest speedup. Even though the first device to host copy was issued before the second host to device copy in the all at once method, the second host to device copy can be executed earlier than it because of the two copy engines. This is what is allowing the all at once execution method to be faster than the batching method. The batching method is suffering from a design choice in the scheduler of the GPU. The GPU tries to execute the kernels concurrently, and in doing so, delays a signal telling the device to host to starting copying until all the kernels have finished execution.
+Newer GPU hardware have both a copy from host to device engine and a copy from device to host engine, as well as the kernel engine. The two methods under this new hardware configuration are shown in Figure \ref{fig:GPU3Way}. Here one can see that again both methods provide an overall speedup, however for this case, the all at once method achieves the greatest speedup. Even though the first device to host copy was issued before the second host to device copy in the all at once method, the second host to device copy can be executed earlier than it because of the two copy engines. This is what is allowing the all at once execution method to be faster than the batching method. The batching method is suffering from a design choice in the scheduler of the GPU. The GPU tries to execute the kernels concurrently, and in doing so, delays a signal telling the device to host engine to starting copying until all the kernels have finished execution.
+
+\subsection{Stream Management}
+Naively creating and destroying streams as they are needed causes avoidable run-time slowdown. By managing the available active streams, one can achieve the most efficient design. For any instance of operation, the number of active streams is $num\_rows$ in the \verb|map|. This number will rarely change, thus initially creating $num\_rows$ amount of streams, and only creating more streams when there are not enough, efficiently maintains the fewest amount of needed streams at all times. Appendix \ref{sec:DeviceStreamManagement} contains the functions used to manage the streams.

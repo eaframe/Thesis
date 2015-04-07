@@ -1,0 +1,31 @@
+\chapter{Vector Management} \label{chap:VectorManagement}
+\section{Device Vector Management} \label{sec:DeviceVectorManagement}
+\begin{lstlisting}[language=C,caption={Device Vector Management}]
+void init_vector(long **vector, 
+                long size, 
+                long num_elements, 
+                long *length) {
+    // perform initial allocation
+	if(*vector == NULL) {
+		if(cudaSuccess != 
+		    cudaMalloc((void **)vector, size))
+		{
+		    GPU_error(__FILE__, 
+		        __LINE__, 
+		        cudaGetLastError());
+		}
+		*length = num_elements;
+	// resize if vector is too small
+	} else if (*length < num_elements) {
+		cudaFree(*vector);
+		if(cudaSuccess != 
+		    cudaMalloc((void **)vector, size)) 
+		{
+		    GPU_error(__FILE__, 
+		        __LINE__, 
+		        cudaGetLastError());
+		}
+		*length = num_elements;
+	}
+}
+\end{lstlisting}
