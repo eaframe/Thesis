@@ -3,61 +3,28 @@ The first attempt at speeding up the run-time of HElib utilizes a GPU to paralle
 
 There are three phases when executing operations on a GPU. First the memory is copied from the host(CPU) to the device(GPU). Then a kernel is created, which performs the operation on the data in the devices memory. Finally the data is copied back from the device to the host, upon which the host continues execution. The first and third phases are discussed further in Section \ref{sec:MemoryMapping}, and the kernel designs are addressed in Section \ref{sec:OverflowConsiderations}. Furthermore, these three phases can be parallelized to achieve the fastest speedup, discussed in Section \ref{sec:Pipelining}.
 
-\section{HElib Serial Design} \label{sec:HElibSerialDesign}
-
-\begin{figure}[htp]
-\centering
-\includegraphics[width=0.65\textwidth]{CtxtTypeHierarchy.png}
-\caption{HElib Type Hierarchy}
-\label{fig:CtxtTypeHierarchy}
-\end{figure}
-Before addressing the changes present in GPUHElib, it is necessary to understand the current serial implementation of HElib. Let $\ast$ be the operation being perform (here $\ast$ could stand for any of the operations, all of them are handled similarly) and $A$ and $B$ be the ciphertexts being operated on. The execution of the operation $ A = A\ \ast\  B$ requires a few steps. 
-
-$A$ and $B$ are stored as \verb|Ctxt| objects in HElib. Figure \ref{fig:CtxtTypeHierarchy} shows the type hierarchy for a \verb|Ctxt| object. \verb|Ctxt| objects have one important variable, \verb|parts|, a vector containing multiple \verb|CtxtPart|s. These parts constitute the ciphertext. The operations supported by \verb|Ctxt| are the addition, subtraction, and multiplication of two \verb|Ctxt| objects. Each of these operations use \verb|parts| during the execution of the operation, thus the operations in \verb|CtxtPart| are called.
-
-\verb|CtxtPart| is an extension of the class \verb|DoubleCRT|, which is where the operations are implemented. Listing \ref{lst:HElibSerial} is an excerpt from the function that performs the operations.
-
-\begin{lstlisting}[language=C++,caption={Add, Sub and Mul operations of two DoubleCRT objects},label={lst:HElibSerial}]
-...
-const IndexSet& s = map.getIndexSet();
-long phim = context.zMStar.getPhiM();
-
-for (long i = s.first(); i <= s.last(); i = s.next(i)) {
-    long pi = context.ithPrime(i);
-    vec_long& row = map[i];
-    const vec_long& other_row = (*other_map)[i];
-
-    for (long j = 0; j < phim; j++) {
-      row[j] = fun.apply(row[j], other_row[j], pi);
-    }
-}
-...
-\end{lstlisting}
-
-As the index set is iterated over, the ith prime is extracted along with the ith row from the maps. Even though the map is accessed like an array, it is an unordered map, with the array access syntax for convenience. These rows are then iterated over, applying the operation to each element. This is where the SIMD design is occurring. A double \verb|for| loop to add, subtract or multiply two vectors together. This is where the GPU implementation can occur.
-
 \section{Memory Mapping} \label{sec:MemoryMapping}
 In order for the GPU to execute a kernel, it must have the data in a 1D vector. This requires that the data be mapped from its current storage model into a 1D vector.
 
-\subsection{Mapping from HElib to GPU}
+\subsection{Mapping from CPU to GPU}
 
 \begin{figure}[htp]
 \centering
-\includegraphics[width=0.65\textwidth]{HElibDataStorage.png}
-\caption{HElib Data Storage (Blue area is on CPU, Green area is on GPU)}
-\label{fig:HElibDataStorage}
+\includegraphics[width=0.65\textwidth]{MappingCPUtoGPUData.png}
+\caption{Data Mapping from CPU to GPU}
+\label{fig:MappingCPUtoGPUData}
 \end{figure}
 
-Currently the data is stored as shown in Figure \ref{fig:HElibDataStorage}. The \verb|map| contains vectors or rows, each of these rows are arrays of 64-bit integers. This structure is a non-contiguous 1D vector that needs to be mapped to a contiguous 1D vector. Thus the rows must be copied into a new vector, which the GPU will then operate on. Each successive row is concatenated to the preceding rows, thus creating a 1D vector.
+Currently the data is stored as shown in Figure \ref{fig:MappingCPUtoGPUData}. The \verb|map| contains vectors or rows, each of these rows are arrays of 64-bit integers. This structure is a non-contiguous 1D vector that needs to be mapped to a contiguous 1D vector. Thus the rows must be copied into a new vector, which the GPU will then operate on. Each successive row is concatenated to the preceding rows, thus creating a 1D vector.
 
 \begin{figure}[htp]
 \centering
-\includegraphics[width=0.3\textwidth]{HElibModuliStorage.png}
-\caption{HElib Moduli Storage (Blue area is on CPU, Green area is on GPU)}
-\label{fig:HElibModuliStorage}
+\includegraphics[width=0.3\textwidth]{MappingCPUtoGPUModuli.png}
+\caption{Moduli Mapping from CPU to GPU}
+\label{fig:MappingCPUtoGPUModuli}
 \end{figure}
 
-Similarly the moduli are being stored as individual elements. In order to be used during execution on the GPU, they must also be mapped to a 1D vector. Figure \ref{fig:HElibModuliStorage} shows the current storage model for the moduli. Each successive modulus is concatenated to the preceding moduli, thus creating a 1D vector.
+Similarly the moduli are being stored as individual elements. In order to be used during execution on the GPU, they must also be mapped to a 1D vector. Figure \ref{fig:MappingCPUtoGPUModuli} shows the current storage model for the moduli. Each successive modulus is concatenated to the preceding moduli, thus creating a 1D vector.
 
 \subsection{GPU Vector Management}
 Naively creating and freeing vectors on the GPU when the operation is run slows down run-times because allocating and freeing memory on the GPU takes time. Thus creating a few vectors at the beginning of execution, and maintaining them throughout the programs lifetime, allows for the most efficient memory usage, and greatest speedup.

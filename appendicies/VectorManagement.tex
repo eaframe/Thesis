@@ -29,3 +29,24 @@ void init_vector(long **vector,
 	}
 }
 \end{lstlisting}
+
+\section{Compute Node Buffer Management} \label{sec:ComputeNodeBufferManagement}
+\begin{lstlisting}[language=C,caption={Compute Node Buffer Management}]
+void init_vector(long **vector, 
+                long *vector_length, 
+                long need_length) {
+    // perform the initial allocation
+	if(*vector == NULL) {
+		*vector = 
+		    (long *) malloc(sizeof(long) * 
+		        need_length);
+		*vector_length = need_length;
+    // resize if buffer is too small
+	} else if (*vector_length < need_length) {
+		*vector = 
+		    (long *)realloc(vector, 
+		        sizeof(long) * need_length); 
+		*vector_length = need_length;
+	}
+}
+\end{lstlisting}
