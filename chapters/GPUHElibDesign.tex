@@ -8,7 +8,7 @@ In order for the GPU to execute a kernel, it must have the data in a 1D vector. 
 
 \subsection{Mapping from CPU to GPU}
 
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{MappingCPUtoGPUData.png}
 \caption{Data Mapping from CPU to GPU}
@@ -17,7 +17,7 @@ In order for the GPU to execute a kernel, it must have the data in a 1D vector. 
 
 Currently the data is stored as shown in Figure \ref{fig:MappingCPUtoGPUData}. The \verb|map| contains vectors or rows, each of these rows are arrays of 64-bit integers. This structure is a non-contiguous 1D vector that needs to be mapped to a contiguous 1D vector. Thus the rows must be copied into a new vector, which the GPU will then operate on. Each successive row is concatenated to the preceding rows, thus creating a 1D vector.
 
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.3\textwidth]{MappingCPUtoGPUModuli.png}
 \caption{Moduli Mapping from CPU to GPU}
@@ -131,7 +131,7 @@ xy & = z_2 B^{2m} + z_1 B^{m} + z_0\\
 shows that there will be problems computing $z_2 B^{2m}$ and $z_1 B^{m}$. However these can be dealt with deterministically. By performing a loop, multiplying $z_2$ and $z_1$ by 2, 64 and 32 times respectively, performing the modulus operation after every multiplication, one can obtain the correct value, without exceeding the unsigned 64-bit integer limit. Final modulus operations are applied to each addition, finally resulting in the correct value. This value is cast back to a signed 64-bit integer, and the operation is complete. The kernels for both multiplication operations, between two \verb|DoubleCRT| objects and between a \verb|DoubleCRT| object and a constant are in Appendix \ref{sec:KernelMultiplication}.
 
 \section{Pipelining} \label{sec:Pipelining}
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{GPUSerial.png}
 \caption{Serial GPU Execution}
@@ -140,7 +140,7 @@ shows that there will be problems computing $z_2 B^{2m}$ and $z_1 B^{m}$. Howeve
 As mentioned at the beginning of the chapter, there are three phases when performing operations on a GPU. First the data is copied from the host to the device, then the kernel is executed, and finally the data is copied back from the device to the host. The copy operations are handled by the copy engine, a processor that specifically deals with copying data back and forth from the host and device. Kernels are executed by the kernel engine. This operation is serial, meaning that all the data is copied from the host to device, before the kernel is executed. And the memory is not copied back, until all of the kernels have finished executing. This is illustrated in Figure \ref{fig:GPUSerial}. CUDA allows for these operations to be parallelized, using streams.
 
 \subsection{CUDA Streams}
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{GPUConcurrent.png}
 \caption{Concurrent GPU Execution with 3 Streams}
@@ -189,7 +189,7 @@ In this second approach, all the copy from host to device operations are launche
 Both of these methods will produce the same result, as they are executing the same commands. However depending on the hardware being used, one method might achieve a better speedup over the other.
 
 \subsection{2-Way Pipelining}
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{GPU2Way.png}
 \caption{GPU 2-Way Pipelining}
@@ -197,7 +197,7 @@ Both of these methods will produce the same result, as they are executing the sa
 \end{figure}
 Older GPU hardware only have a single copy engine and a single kernel execution engine. Figure \ref{fig:GPU2Way} shows both methods of kernel execution compared to serial execution. As one can see, both provide a speed up, however the batching method provides a greater speedup over the all at once method. This is because the all at once method launched the second copy from host to device after the first copy from device to host. Because there is only one copy engine, and the engine executes operations in the order they were launched, the copy engine must execute the copy from device to host, before the next host to device copy can occur. Using the second method though, the copies from host to device are all launched before the copies from device to host, so they call all execute one after the other. This allows for the most efficient pipelining, and the greatest speedup on hardware that only has one of each engine.
 \subsection{3-Way Pipelining}
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{GPU3Way.png}
 \caption{GPU 3-Way Pipelining}

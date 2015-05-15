@@ -15,7 +15,7 @@ When the dispatcher node reaches a point of execution that is meant to be distri
 \subsection{Work Assignment}
 After the data has been partitioned, it must be assigned to a compute node to be operated on. The scheme used to choose the next compute node for a piece of data is round-robin scheduling. This scheme allows for an even or almost even distribution of the data across all the compute nodes. Having an even or almost even distribution means the lowest run times and the best efficiency. There are two cases to consider when determining if a distribution scheme is efficient: when there are more compute nodes than data pieces, and when there are fewer compute nodes than data pieces.
 
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.95\textwidth]{RollingRoundRobinExampleMore.png}
 \caption{Rolling Round Robin Example with More Nodes than Data Pieces}
@@ -23,7 +23,7 @@ After the data has been partitioned, it must be assigned to a compute node to be
 \end{figure}
 For the first case, with the round-robin scheduling, this just means that some nodes will not be working, while others are. For this design a rolling round-robin design is used. This means that for any operations, the next node to be assigned work will always be the node which was assigned work the longest time ago. This node has the highest probability of being free and ready to receive more work, compared to all the others. Figure \ref{fig:RollingRoundRobinExampleMore} shows an example of rolling round-robin scheduling applied to this case.
 
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.95\textwidth]{RollingRoundRobinExampleLess.png}
 \caption{Rolling Round Robin Example with Less Nodes than Data Pieces}
@@ -35,7 +35,7 @@ For the second case, with the round-robin scheduling, this just means that some 
 In order for the compute nodes to execute, they must have a portion of the data to work on. This requires the dispatcher node to partition the data from its current storage model into pieces, before they are sent to the compute nodes to be worked on.
 
 \subsection{Mapping from Dispatcher Node to Compute Nodes}
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{MappingDispatchertoComputeData.png}
 \caption{Data Mapping from Dispatcher to Compute Nodes}
@@ -43,7 +43,7 @@ In order for the compute nodes to execute, they must have a portion of the data 
 \end{figure}
 Currently the data is stored as shown in Figure \ref{fig:MappingDispatcherToComputeData}. The \verb|map| contains vectors or rows, each of these rows are arrays of 64-bit integers. The rows present a great partitioning point. Splitting the data up by these rows, and sending individual rows to each compute node to be operated on, is the logical splitting point because there will always be about the same number of rows during execution, however the size of the rows might change drastically. Also, splitting rows up would cause more communication between the nodes, which could slow down run times. 
 
-\begin{figure}[htp]
+\begin{figure}[t!]
 \centering
 \includegraphics[width=0.65\textwidth]{MappingDispatchertoComputeModuli.png}
 \caption{Moduli Mapping from Dispatcher to Compute Nodes}
