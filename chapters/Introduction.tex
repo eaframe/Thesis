@@ -1,1 +1,10 @@
-\chapter{Introduction}
+\chapter{Introduction} \label{chap:Introduction}
+In the last five years, the design and development of a new encryption scheme that could enhance the level of security on the internet has exploded. That encryption scheme is known as Homomorphic Encryption. 
+
+First conceived over thirty years ago, and finally designed in 2009 by Craig Gentry, homomorphic encryption is a revolutionary encryption scheme because it allows for computation to be performed on encrypted data. This means that a user can encrypt their data, and send it to a service. That service can then perform an operation, and send the encrypted result back. Upon decryption by the user, the result received will be the exact same as if the data had not been encrypted at all, and the operation had been computed on the unencrypted data. The added benefit of this system however, is that the user data was never known by the service, thus the user can be assured that their information remained secret. By putting this encryption scheme on online services, user data can be passed from online service to online service without the user being worried of their information being known.
+
+A few implementations of homomorphic encryption have been design in recent years. One of the most prominent is HElib. This library however, like all homomorphic encryption libraries, is not currently in use because it suffers from slow run times. Thus there is a desire to speed it up. 
+
+Because the target audience for these schemes is online services, many of which are designed as distributed systems, it makes since to try and modify HElib to take advantage of these systems. Thus two modified libraries were designed in the hope that they would perform better than the original library. GPUHElib, which utilizes a GPU and DistributedHElib, which uses a distributed computing design, were both designed in the hope that they would provide run time improvements over HElib. 
+
+Unfortunately, these modified libraries fail to provide any speedup, as we will show later. These designs exhibit the same pitfalls that other distributed systems do, mainly that memory transfer speeds are too slow, which cause huge slowdowns compared to the original unmodified library. However there could be hope for them, given further work.

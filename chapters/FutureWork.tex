@@ -1,1 +1,18 @@
-\chapter{Future Work}
+\chapter{Future Work} \label{chap:FutureWork}
+\section{GPUHElib Future Work} \label{sec:GPUHElibFutureWork}
+As seen in Chapter \ref{chap:Evaluation}, GPUHElib failed to provide any speed up over serial HElib. This was because the memory transfer times between the CPU and GPU where much too great. Therefore all of the future work for GPUHElib is designed around trying to reduce these times.
+
+\subsection{Persistent Memory in GPU}
+To cut down on memory transfer times, it would be useful to keep all the memory that needs to be transferred in the current design, in the GPUs memory permanently. Thus when the operations need to be performed, the data does not need to be transferred from the CPU to the GPU, as the GPU already contains all the data that needs to be operated on. This would reduce the memory transfer times down to almost zero, thus making the run times only dependent on the operation times, which as seen in Section \ref{sec:GPUHElibEvaluationResults}, were much lower than the serial HElib run times.
+
+\subsection{Full Operation Implementation}
+Only the most used operations were implemented on the GPU. Because of this, the results from the GPU operations needed to be copied back to the CPU, so that other unsupported operation could take place. It would be beneficial then to implement all of the operations supported by serial HElib using the GPU. Thus the results would not need to be copied back, as all the operations that a user could perform would be supported on the GPU.
+
+\section{DistributedHElib Future Work} \label{sec:DistributedHElibFutureWork}
+As seen in Chapter \ref{chap:Evaluation}, DistributedHElib failed to provide any run time improvement over serial HElib. This was a result of the network speed being a bottleneck. Thus all future work for DistributedHElib would try to reduce amount of data sent over the network.
+
+\subsection{Distributed Memory on Compute Nodes}
+In order to rely less on the network to transfer data, one could design the system so that the data is partitioned onto compute nodes. Thus each compute node would be responsible for a piece that only they were responsible for. Then when operations occur, these compute nodes can perform the operation on their piece of the data, without needing to receive the data from the dispatcher node, as the data will already be present on them. Thus data transfers would only happen during initial setup, and finalization, reducing the network traffic, and removing the network bottleneck.
+
+\subsection{Full Operation Implementation}
+Similar to the future work for GPUHElib, it would be useful to have all the operations supported on the compute nodes. Because they are not supported in the library as it is designed now, the results of operations must be sent back to the dispatcher node, so that it can perform one of these unsupported operations. With all operations supported however, the data would not need to be sent back to the dispatcher node to perform the operation, because the operation could be run on the compute nodes.
